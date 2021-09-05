@@ -1,0 +1,1003 @@
+---
+title: "Capstone Project"
+author: "Angelo Anthony"
+date: "9/26/2020"
+output:
+  word_document: default
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# INTRODUCTION:
+
+This dataset represents the client base of an insurance company. 
+
+The data has been gathered across a number of years, primarily through profiling, credit scoring and transactional methods. For example, its such as place of residence, no of dependents etc. would have been gathered during regular profiling of the client, whilst past dues, no of premiums paid etc. would have been gathered from  transactional databases. all of this in turn would have been fed into credit scoring algorithms for internal credit scoring unless the company uses an external FICO type scoring which is publicly available.
+
+The problem statement is to identify / profile clients most liable to default on their premiums such that the company can do a better job of identifying these policy holders eraly on and following up to ensure premiums are paid.
+
+
+# VISUAL REVIEW OF DATA:
+
+1. This is an excel file with 79,853 observations and 17 variables.
+2. The data represents insurance premium data and includes additional personal information on each policy holder.
+3. There seem to be no **Missing Values** in the dataset.
+3. The ID variable seems to be a serial number and hence can be ignored for analysis perspective.
+4. The Age variable is given in days which is somewhat unusual. Ideally, this should be shown in years for easy understanding. The data is quite widespread with policyholder ages ranging from 21 years to 103 years.
+5. Income again is very widspread ranging from 24,030 to 90,262,600. So certain to be outliers which will need to be treated if significant.
+6. The number of times premium was paid 3 - 6 months late ranges from 0 - 13.
+7. The number of times premium was paid 6 - 12 months late ranges from 0 - 17.
+8. The number of times premium was paid > 12 months late ranges from 0 - 11.
+9. Vehicles owned ranges from 1 - 3. So presumably this data relates to Vehicle Insurance as it would be quite a co-incidence not to have any policy holders without a vehicle otherwise.
+10. Number of dependents ranges from 1 - 4. Noteworthy that there are no policy holders with zero dependents.
+11. Whilst not specifically mentioned, presume that a smaller score is indicative of lower risk and vice versa. The data seems to be of a subset of customers with fairly high risk score, as the range for this data set is between 91.9 and 99.89.
+12. There seems to be a variety of client acquisition channels, but the specifc of these channels is not provided.
+13. **Premium renewed** -- Generally clients do not renew premiums, they pay premiums to ensure the policy remains valid and **renew** policies. However, for the purposes of this particular exercise, I assume that 0 means the client has defaulted on the Premium payment and 1 means that he has not. As such, I will treat this column as the **DEPENDANT VARAIBLE**.
+
+## SET REQUIRED LIBRARIES:
+```{r}
+
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(DataExplorer)
+library(plyr)
+
+```
+## SET WORKING DIRECTORY AND READ FILE:
+```{r}
+setwd("C:/Users/admin/OneDrive/Learning R/Capstone Project")
+Premium_Dataset = read_excel("premium.xlsx")
+```
+
+
+## INITIAL VIEWING AND FINDINGS:
+```{r}
+anyNA(Premium_Dataset)
+
+names(Premium_Dataset)
+str(Premium_Dataset)
+dim(Premium_Dataset)
+head(Premium_Dataset)
+summary(Premium_Dataset)
+
+introduce(Premium_Dataset)
+plot_intro(Premium_Dataset)
+plot_bar(Premium_Dataset)
+plot_histogram(Premium_Dataset)
+
+qq_data = Premium_Dataset[,c("age_in_days", "Income", "perc_premium_paid_by_cash_credit", "premium", "risk_score", "no_of_premiums_paid", "renewal" )]
+
+qq_data1 = Premium_Dataset[,c("Count_3-6_months_late", "Count_6-12_months_late", "Count_more_than_12_months_late", "renewal")]
+plot_qq(qq_data)
+
+#?? plot_qq
+
+plot_qq(qq_data, by = "renewal")
+plot_qq(qq_data1, by = "renewal")
+
+plot_correlation(Premium_Dataset)
+plot_correlation(Premium_Dataset, type = "c")
+plot_correlation(Premium_Dataset, type = "d")
+
+#pca_data = Premium_Dataset[,c("age_in_days", "Income", "perc_premium_paid_by_cash_credit", "premium", "risk_score", "no_of_premiums_paid", "Count_3-6_months_late", "Count_6-12_months_late", "Count_more_than_12_months_late")]
+
+#plot_prcomp(pca_data)
+
+#plot_boxplot(qq_data, by = "renewal")
+#plot_boxplot(qq_data1, by = "renewal")
+
+
+
+
+```
+1. % paid by cash -- Median is 16.7% whereas Mean is 31%. this seems to indicate right skewed data with the majority paying largely by credit card but with sufficient outliers to skew the data.
+2. Age seems fairly normally distributed with Mean and Median almost the same. Again, note that this is recorded in days and would be more appropriately changed to years.
+3. Income has some clear outliers but, seemingly in small enough numbers that Mean is not too far to the right of Median.
+4. In terms of late payments, the majority of the policy holders seems to be paying on time as would be expected. It would be interesting to see of there is any correlation between the three buckets in that late payments invariably balloon into default? 
+5. Marital Status should be a **Factor**.
+7. Accommodation should be a **Factor**.
+8. Risk Score is definitely right skewed.
+9. Based on the, and assuming these are paid annually, Number of premiums paid, most policy holders seem to have been with the company for around 10 years. If this assumption holds then the Max number seems fairly incredible although it may align given the age of some of the policy holders being > 100. However, not enough information to make a definitive comment.
+10. Sourcing channels should be a **Factor**.
+11. Residence area type should be a **Factor**.
+12. Premium presumably relates to the Premium payable per cycle. It is unclear as to what the payment cycle is i.e. quarterly, half yearly, annual etc.
+13. The Dependent Variable -- Renewal -- should be a **Factor**.
+
+## CHANGE AGE TO YEARS & CERTAIN VARIABLES TO FACTORS:
+
+```{r}
+Premium_Dataset$age_in_years = round(Premium_Dataset[,3]/365,0)
+Premium_Dataset$age_in_years = as.numeric(Premium_Dataset$age_in_years[[1]])
+
+Premium_Dataset = Premium_Dataset[,-c(1,3)]
+Premium_Dataset = Premium_Dataset[,c(1,2,16,3:15)]
+
+
+colnames(Premium_Dataset)[1]  = "Perc_Cash_Pay"
+colnames(Premium_Dataset)[7]  = "Marital_Status"
+colnames(Premium_Dataset)[16]  = "Default"
+#colnames(Premium_Dataset)[4] = "Count_3-6_months_late"
+#colnames(Premium_Dataset)[5] = "Count_6-12_months_late"
+
+Premium_Dataset$Marital_Status = as.factor(Premium_Dataset$Marital_Status)
+Premium_Dataset$Accomodation = as.factor(Premium_Dataset$Accomodation)
+Premium_Dataset$sourcing_channel = as.factor(Premium_Dataset$sourcing_channel)
+Premium_Dataset$residence_area_type = as.factor(Premium_Dataset$residence_area_type)
+Premium_Dataset$Default = as.factor(Premium_Dataset$Default)
+
+```
+
+## POST INITIAL DATA PREP, THE DATASET HAS THE FOLLOWING STRUCTURE:
+
+```{r}
+str(Premium_Dataset)
+attach(Premium_Dataset)
+```
+
+### UNIVARIATE ANALYSIS - Premium % Paid in Cash:
+```{r}
+summary(Perc_Cash_Pay)
+#par(mfrow =c(1,2))
+hist(Perc_Cash_Pay, xlab = "Percentage", ylab = "Density", main = "Histogram of Premium % Paid in Cash", col = "skyblue")
+boxplot(Perc_Cash_Pay, horizontal = TRUE, xlab = "Percentage", main = "Boxplot of Premium % Paid in Cash", col = "skyblue") 
+text(x=boxplot.stats(Perc_Cash_Pay)$stats, labels = boxplot.stats(Perc_Cash_Pay)$stats, y = 1.25)  
+
+length(Perc_Cash_Pay[Perc_Cash_Pay=0])
+length(Perc_Cash_Pay[Perc_Cash_Pay<0.2])
+length(Perc_Cash_Pay[Perc_Cash_Pay>0.538])
+length(Perc_Cash_Pay[Perc_Cash_Pay>0.9])
+```
+1. None of the policy holders pay entirely via non cash methods such as Direct Debit / Credit Cards etc.
+2. Circa 42,000 policy holders pay less than 20% of their premiums in Cash.
+3. Circa 20,000 policy holders pay greater than 53% of their premiums in Cash of which, circa 9,000 policy holders pay almost entirely in cash.
+
+### UNIVARIATE ANALYSIS - Age:
+
+```{r}
+summary(age_in_years)
+Max_IQR_age = (62-41)*1.5
+length(age_in_years[age_in_years>93.5])
+
+age_in_years = replace(age_in_years, age_in_years>93.5, 93.5)
+
+
+par(mfrow =c(1,2))
+hist(age_in_years, xlab = "Age", ylab = "Density", main = "Histogram of Policy Holder Age", col = "skyblue")
+boxplot(age_in_years, horizontal = TRUE, xlab = "Age", main = "Boxplot of Policy Holder Age", col = "skyblue") 
+text(x=boxplot.stats(age_in_years)$stats, labels = boxplot.stats(age_in_years)$stats, y = 1.25)  
+
+#quantile(age_in_years,c(0.05,0.1,0.25,0.50,0.75,0.9,0.95,0.99))
+
+
+```
+1. Normal distribution, with mean and median around 51 years. 
+2. the youngest policy holder is 21 years of age.
+3. 99% of the policy holders are below or equal to 86 years of age.
+4. 44 outliers exist above Max IQR of 93.5 years, broken up as follows: 
+5. We capped at Max IQR.
+
+### UNIVARIATE ANALYSIS - Income:
+```{r}
+summary(Income)
+
+Max_IQR_Income = 252090 +((252090-108010)*1.5)
+#quantile(Income,c(0.05,0.1,0.25,0.50,0.75,0.9,0.95,0.99))
+length(Income[Income>Max_IQR_Income])
+
+
+#Income = Premium_Dataset[,4]/1000
+#Income = as.numeric(Income[[1]])
+Income = replace(Income, Income>Max_IQR_Income, Max_IQR_Income)
+
+summary(Income)
+length(Income[Income<=191692])
+Premium_Dataset$Income = Income
+
+#par(mfrow =c(1,2))
+hist(Income/1000, xlab = "Income", ylab = "Density", main = "Histogram of Income (000)", col = "skyblue")
+boxplot(Income/1000, horizontal = TRUE, xlab = "Income", main = "Boxplot of Income (000)", col = "skyblue") 
+text(x=boxplot.stats(Income/1000)$stats, labels = boxplot.stats(Income/1000)$stats, y = 1.25)  
+
+
+```
+1. The outliers in the Income variable were making it impossible to obtain a view of the overall data.
+2. As such, we have capped Income at Max IQR of 468,210.
+3. Additionally, for ease of comparison, the Income variable has been divided by 1000 to provide an X axis in thousands.
+4. The resultant data is fairly normally distributed with a right skew.
+5. Average Income is around 191692, whereas median is lower given that 59% of policy holders earn below mean.
+
+### UNIVARIATE ANALYSIS - past dues 3 - 6 months:
+```{r}
+summary(`Count_3-6_months_late`)
+
+#par(mfrow =c(1,2))
+hist(`Count_3-6_months_late`, xlab = "Instances of Past Dues 3- 6 months", ylab = "Density", main = "Histogram of Instances of Past Dues 3- 6 months", col = "skyblue")
+#boxplot(`Count_3-6_months_late`, horizontal = TRUE, xlab = "Instances of Past Dues 3- 6 months", main = "Boxplot of Instances of Past Dues 3- 6 months", col = "skyblue") 
+#text(x=boxplot.stats(`Count_3-6_months_late`)$stats, labels = boxplot.stats(`Count_3-6_months_late`)$stats, y = 1.25) 
+
+Count_headings = c(0:13)
+Count_table = table(`Count_3-6_months_late`)
+Count_prop = round(prop.table(table(`Count_3-6_months_late`)),3)
+Count_Output = data.frame(Count_headings, Count_table, Count_prop)
+Count_Output = Count_Output[,-c(2,4)]
+names(Count_Output)[1] = "Instances"
+names(Count_Output)[2] = "No. of Policy Holders"
+names(Count_Output)[3] = "%"
+#Count_Output = rename(Count_Output, "count" = "Count_headings", "# of Policy Holders" = "Freq", "%" = "Freq.1")
+Count_Output
+```
+1. A table of Past dues is as follows:
+
+2. Greater than 83% of all policy holders have paid their premiums on time. 
+2. 11% have had 1 late payment of between 3 - 6 months with 3% having 2 late payments.
+3. The rest of the late payments are broadly spread with the maximum being 13 instances by 1 individual.
+
+### UNIVARIATE ANALYSIS - past dues 6 - 12 months:
+```{r}
+summary(`Count_6-12_months_late`)
+
+#par(mfrow =c(1,2))
+hist(`Count_6-12_months_late`, xlab = "Instances of Past Dues 6- 12 months", ylab = "Density", main = "Histogram of Instances of Past Dues 6- 12 months", col = "skyblue")
+#boxplot(`Count_6-12_months_late`, horizontal = TRUE, xlab = "Instances of Past Dues 6- 12 months", main = "Boxplot of Instances of Past Dues 6- 12 months", col = "skyblue") 
+#text(x=boxplot.stats(`Count_6-12_months_late`)$stats, labels = boxplot.stats(`Count_6-12_months_late`)$stats, y = 1.25) 
+
+Count_headings1 = c(0:15,17)
+Count_table1 = table(`Count_6-12_months_late`)
+Count_prop1 = round(prop.table(table(`Count_6-12_months_late`)),3)
+Count_Output1 = data.frame(Count_headings1, Count_table1, Count_prop1)
+Count_Output1 = Count_Output1[,-c(2,4)]
+names(Count_Output1)[1] = "Instances"
+names(Count_Output1)[2] = "No. of Policy Holders"
+names(Count_Output1)[3] = "%" 
+Count_Output1
+
+```
+1. A table of past dues is provided below:
+
+
+2. Just over 95% of all policy holders have paid their premiums without any past dues of between 6 - 12 months. This is not the same as saying that they had no past dues, simply that they did not have any in this particular bucket.
+3. Another 3.4% had 1 past due in this segment.
+4. The rest are spread widely with the maximum being 17 instances of past dues in this bucket by 1 individual.
+
+
+
+### UNIVARIATE ANALYSIS - past dues > 12 months:
+
+```{r}
+summary(Count_more_than_12_months_late)
+
+#par(mfrow =c(1,2))
+hist(Count_more_than_12_months_late, xlab = "Instances of Past Dues > 12 months", ylab = "Density", main = "Histogram of Instances of Past Dues > 12 months", col = "skyblue")
+#boxplot(Count_more_than_12_months_late, horizontal = TRUE, xlab = "Instances of Past Dues > 12 months", main = "Boxplot of Instances of Past Dues > 12 months", col = "skyblue") 
+#text(x=boxplot.stats(Count_more_than_12_months_late)$stats, labels = boxplot.stats(Count_more_than_12_months_late)$stats, y = 1.25) 
+
+Count_headings2 = c(0:8,11)
+Count_table2 = table(Count_more_than_12_months_late)
+Count_prop2 = round(prop.table(table(Count_more_than_12_months_late)),3)
+Count_Output2 = data.frame(Count_headings2, Count_table2, Count_prop2)
+Count_Output2 = Count_Output2[,-c(2,4)]
+#Count_Output2 = rename(Count_Output2, "Count" = "Count_headings2", "# of Policy Holders" = "Freq", "%" = "Freq.1")
+names(Count_Output2)[1] = "Instances"
+names(Count_Output2)[2] = "No. of Policy Holders"
+names(Count_Output2)[3] = "%" 
+Count_Output2
+
+```
+1. A table of past dues is provided below:
+'r Count_Output2'
+
+2. Just over 95% of all policy holders have paid their premiums without any past dues > 12 months. This is not the same as saying that they had no past dues, simply that they did not have any in this particular bucket.
+3. Another 3.8% had 1 past due in this segment.
+4. The rest are spread widely with the maximum being 11 instances of past dues in this bucket by 1 individual.
+
+### UNIVARIATE ANALYSIS - Marital Status:
+```{r}
+table(Marital_Status)
+
+```
+1. Fairly evenly split dataset of married and unmarried policy holders.
+
+### UNIVARIATE ANALYSIS - Vehicles Owned:
+
+```{r}
+Vehicle_Count = c(1:3)
+Vehicle_table = table(Veh_Owned)
+Vehicle_table
+Vehicle_prop = round(prop.table(table(Veh_Owned)),3)
+Vehicle_Output = data.frame(Vehicle_Count, Vehicle_table, Vehicle_prop)
+Vehicle_Output = Vehicle_Output[,-c(2,4)]
+names(Veh_Owned)[2] = "No. of Vehicles"
+names(Count_Output1)[3] = "%" 
+Vehicle_Output
+
+```
+1. A table of vehicles owned by policy owners is provided below:
+'r Vehicle_Output'
+
+2. A fairly evenly distributed dataset.
+
+### UNIVARIATE ANALYSIS - Number of Dependants:
+```{r}
+Dependent_Count = c(1:4)
+Dependent_table = table(No_of_dep)
+Dependent_table
+Dependent_prop = round(prop.table(table(No_of_dep)),3)
+Dependent_Output = data.frame(Dependent_Count, Dependent_table, Dependent_prop)
+Dependent_Output = Dependent_Output[,-c(2,4)]
+names(Dependent_Output)[2] = "No. of Dependents"
+names(Dependent_Output)[3] = "%" 
+Dependent_Output
+
+
+```
+1. A table of Number of Dependents by policy owners is provided below:
+'r Dependent_Output'
+
+2. A fairly evenly distributed dataset.
+
+### UNIVARIATE ANALYSIS - Accomodation:
+```{r}
+Accomodation_Count = c("Rented", "Owned")
+Accomodation_table = table(Accomodation)
+Accomodation_table
+Accomodation_prop = round(prop.table(table(Accomodation)),3)
+Accomodation_Output = data.frame(Accomodation_Count, Accomodation_table, Accomodation_prop)
+Accomodation_Output = Accomodation_Output[,-c(2,4)]
+names(Accomodation_Output)[2] = "No. of Policy Holders"
+names(Accomodation_Output)[3] = "%" 
+Accomodation_Output
+
+```
+1. A table of Accommodation Type by policy owners is provided below:
+
+
+2. A fairly evenly distributed dataset.
+
+### UNIVARIATE ANALYSIS - Risk Score:
+```{r}
+summary(risk_score)
+quantile(risk_score,c(0.05,0.1,0.25,0.50,0.75,0.9,0.95,0.99))
+
+length(risk_score[risk_score<97.8])
+#length(risk_score[risk_score>99])
+
+Min_IQR_RiskScore = 98.83 - ((99.52-98.83)*1.5)
+
+risk_score = replace(risk_score, risk_score<97.8, 97.8)
+
+#Premium_Dataset$risk_score = risk_score
+
+#par(mfrow =c(1,2))
+hist(risk_score, xlab = "Risk Score", ylab = "Density", main = "Histogram of Risk Score", col = "skyblue")
+boxplot(risk_score, horizontal = TRUE, xlab = "Risk Score", main = "Boxplot of Risk Score", col = "skyblue") 
+text(x=boxplot.stats(risk_score)$stats, labels = boxplot.stats(risk_score)$stats, y = 1.25) 
+```
+1. Left skewed distribution, with the bulk of the dataset (circa 70%) represented at > 99.
+2. Given the large tail, we have capped the lowest risk score at Min IQR.
+
+### UNIVARIATE ANALYSIS - Number of Premiums Paid:
+```{r}
+summary(no_of_premiums_paid)
+quantile(no_of_premiums_paid,c(0.05,0.1,0.25,0.50,0.75,0.9,0.95,0.99))
+
+Max_IQR_Premium_Paid = 14+((14-7)*1.5)
+length(no_of_premiums_paid[no_of_premiums_paid>24.5])
+no_of_premiums_paid = replace(no_of_premiums_paid, no_of_premiums_paid>24.5, 24.5)
+
+#Premium_Dataset$no_of_premiums_paid = no_of_premiums_paid
+
+par(mfrow =c(1,2))
+hist(no_of_premiums_paid, xlab = "# of Premiums Paid", ylab = "Density", main = "Histogram of # of Premiums Paid", col = "skyblue")
+boxplot(no_of_premiums_paid, horizontal = TRUE, xlab = "# of Premiums Paid", main = "Boxplot of # of Premiums Paid", col = "skyblue") 
+text(x=boxplot.stats(no_of_premiums_paid)$stats, labels = boxplot.stats(no_of_premiums_paid)$stats, y = 1.25) 
+
+```
+1. Right skewed distribution, with the average being around 10 payments. 
+2. Given the tail, we have capped the max number of premiums paid at Max IQR. 
+
+### UNIVARIATE ANALYSIS - Sourcing Channels:
+```{r}
+Sourcing_Count = c("A", "B", "C","D", "E")
+Sourcing_table = table(sourcing_channel)
+Sourcing_table
+Sourcing_prop = round(prop.table(table(sourcing_channel)),3)
+Sourcing_Output = data.frame(Sourcing_Count, Sourcing_table, Sourcing_prop)
+Sourcing_Output = Sourcing_Output[,-c(2,4)]
+
+names(Sourcing_Output)[2] = "No. of Policy Holders"
+names(Sourcing_Output)[3] = "%" 
+Sourcing_Output
+
+```
+1. Channel A seems to be the most widely used with 54% of the policy holders having been sourced through this method.
+2. Conversely, Channel E seems to be the least used. It would be interesting to see if there is any correlation between sourcing channels and premium defaults.
+
+### UNIVARIATE ANALYSIS - Type of Residence:
+```{r}
+Residence_Count = c("Rural", "Urban")
+Residence_table = table(residence_area_type)
+Residence_table
+Residence_prop = round(prop.table(table(residence_area_type)),3)
+Residence_Output = data.frame(Residence_Count, Residence_table, Residence_prop)
+Residence_Output = Residence_Output[,-c(2,4)]
+#Residence_Output = rename(Residence_Output, "Residence" = "Residence_Count", "# of Policy Holders" = "Freq", "%" = "Freq.1")
+Residence_Output
+```
+1. A greater proportion of Urban compared to Rural residence types across the data set.
+
+### UNIVARIATE ANALYSIS - Premium:
+```{r}
+summary(premium)
+quantile(premium,c(0.05,0.1,0.25,0.50,0.75,0.9,0.95,0.99))
+
+Max_IQR_Premium = 13800+((13800-5400)*1.5)
+
+length(premium[premium>26400])
+premium = replace(premium, premium>26400, 26400)
+
+summary(premium)
+length(premium[premium<10207])
+#Premium_Dataset$premium = premium
+
+#par(mfrow =c(1,2))
+hist(premium, xlab = "Premium", ylab = "Density", main = "Histogram of Premium", col = "skyblue")
+boxplot(premium, horizontal = TRUE, xlab = "Premium", main = "Boxplot of Premium", col = "skyblue") 
+text(x=boxplot.stats(premium)$stats, labels = boxplot.stats(premium)$stats, y = 1.25) 
+
+```
+1. Right skewed data set, with an average premium amount of 10,207.
+2. Fully 62% of the data set is below the average.
+3. Given the tail, we have capped the premium at Max IQR. 
+
+
+## BIVARIATE ANALYSIS - Correlation Plot:
+```{r}
+plot_correlation(Premium_Dataset[,c(1,2,3,4,5,6,8,9,11,12,15,16)])
+plot_correlation(Premium_Dataset[,c(7,10,13,14,16)])
+
+
+# perform the chi sq test for Correlation of categorical data
+l = names(Filter(is.factor, Premium_Dataset))
+ChiSqStat = NA
+for ( i in 1 :(ncol(Premium_Dataset[,l]))){
+  Statistic = data.frame(
+    "Row" = 'Default', 
+    "Column" = colnames(Premium_Dataset[,l][i]),
+    "Chi SQuare" = chisq.test(Premium_Dataset[,'Default'], Premium_Dataset[,l][[i]])$statistic, 
+    "df"= chisq.test(Premium_Dataset[,'Default'], Premium_Dataset[,l][[i]])$parameter,
+    "p.value" = chisq.test(Premium_Dataset[,'Default'], Premium_Dataset[,l][[i]])$p.value)
+  ChiSqStat = rbind(ChiSqStat, Statistic)
+}
+ChiSqStat <- data.table::data.table(ChiSqStat)
+ChiSqStat
+
+```
+1. In comparing all Numeric variables, we cannot identify any strong correlations between any of the variables.
+2. In comparing the categorical variables, **Sourcing Channel** seems to have the strongest correlation with p value below 0.05.
+
+## we will now undertake Bivariate analysis of each variable against the Dependent Variable.
+
+## BIVARIATE ANALYSIS - Premium % paid in Cash:
+```{r}
+plot(Perc_Cash_Pay~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+ggplot(Premium_Dataset, aes(Perc_Cash_Pay, age_in_years))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(Perc_Cash_Pay, Income))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of 3-6 months Past Dues by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = `Count_6-12_months_late`))+
+labs(title = "Spread of 6-12 months Past Dues by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = Count_more_than_12_months_late))+
+labs(title = "Spread of > 12 months Past Dues by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Veh_Owned, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = Veh_Owned))+
+labs(title = "Spread of Vehicles owned by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(No_of_dep, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = No_of_dep, fill = Perc_Cash_Pay))+
+labs(title = "Spread of # of dependants by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")  
+
+ggplot(Premium_Dataset, aes(Perc_Cash_Pay, risk_score))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, Perc_Cash_Pay)) +
+geom_violin(scale = "area", aes(color = no_of_premiums_paid))+
+labs(title = "Spread of # of premiums paid by % cash pay") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Perc_Cash_Pay, premium))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+```
+1. % cash pay lowest for Channel A and highest for Channels D & E.
+2. Generally lower Income levels as % cash pay increases.
+3. Inverse relationship with Age i.e. % of cash pay decreases as Age increases.
+4. In the 3 - 6 month past due bucket, clear pattern with higher number of past dues with higher levels of % cash pay.
+5. With regards to # of Premiums paid, % cash pay seems to start very high for newer customers and drops sharply as # of premiums increases beyond 5. thereafter, a shallo but steady decrease in % cash pay as # of premiums paid increases.
+6. Broadly, high premium levels seem to have lower % cash pay but a very shallow relationship.
+
+
+## BIVARIATE ANALYSIS - Age:
+```{r}
+plot(age_in_years  ~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+ggplot(Premium_Dataset, aes(age_in_years, Income))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, age_in_years)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of 3 - 6 months Past Dues by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, age_in_years)) +
+geom_violin(scale = "area", aes(color = `Count_6-12_months_late`))+
+labs(title = "Spread of 6 - 12 months Past Dues by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, age_in_years)) +
+geom_violin(scale = "area", aes(color = Count_more_than_12_months_late))+
+labs(title = "Spread of > 12 months Past Dues by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Veh_Owned, age_in_years)) +
+geom_violin(scale = "area", aes(color = Veh_Owned))+
+labs(title = "Spread of vehicles owned by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(No_of_dep, age_in_years)) +
+geom_violin(scale = "area", aes(color = No_of_dep))+
+labs(title = "Spread of # of dependents by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+ 
+ggplot(Premium_Dataset, aes(age_in_years, risk_score))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, age_in_years)) +
+geom_violin(scale = "area", aes(color = no_of_premiums_paid))+
+labs(title = "Spread of # of premiums by Age") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(age_in_years, premium))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+```
+1. Channel A seems to source older policy holders with the highest age bracket, whereas Channels C, D & E have the lowest or youngest policy holders.
+2. Broadly, Income increases with Age and flattens out past 75 yrs.
+3. In both the 6 - 12 months and > 12 months past dues buckets, incidences of past dues move inversely with Age, with younger members having higher instances of past dues.
+4. Risk score improves marginally as age increases, but reverses trend past 50 and flattens out past 80.
+5. # of premiums paid increases with Age.
+6. Premiums increase with Age upto around 50, then reverses trend and flattens out past 85.
+
+
+## BIVARIATE ANALYSIS - Income:
+```{r}
+plot(Income/1000~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, Income/1000)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of 3 - 6 months Past Dues by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, Income/1000)) +
+geom_violin(scale = "area", aes(color = `Count_6-12_months_late`))+
+labs(title = "Spread of 6 - 12 months Past Dues by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, Income/1000)) +
+geom_violin(scale = "area", aes(color = Count_more_than_12_months_late))+
+labs(title = "Spread of > 12 months Past Dues by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Veh_Owned, Income/1000)) +
+geom_violin(scale = "area", aes(color = Veh_Owned))+
+labs(title = "Spread of vehicles owned by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(No_of_dep, Income/1000)) +
+geom_violin(scale = "area", aes(color = No_of_dep))+
+labs(title = "Spread of # of dependents by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Income/1000, risk_score))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, Income/1000)) +
+geom_violin(scale = "area", aes(color = no_of_premiums_paid))+
+labs(title = "Spread of # of premiums by Income") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(Income/1000, premium))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+```
+1. Channel A has the lowest median Income with Channel E having the highest and Channel D following closely.
+2. The > 12 months past dues bucket seems to indicate that, with cases of > 6 instances, the offenses seem to increase with higher income. 
+3. Risk score seems to increase with Income.
+4. # of premiums paid increase with Income.
+5. Premiums themselves move higher as Income increases.
+
+
+## BIVARIATE ANALYSIS - Past dues 3 - 6 months:
+```{r}
+plot(`Count_3-6_months_late`~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+round(prop.table(table(`Count_3-6_months_late`, sourcing_channel))*100,2)
+
+ggplot(data = Premium_Dataset, aes(y = `Count_3-6_months_late`, fill = Marital_Status)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_3-6_months_late`, fill = Accomodation)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_3-6_months_late`, fill = sourcing_channel)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_3-6_months_late`, fill = residence_area_type)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, `Count_6-12_months_late`))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, Count_more_than_12_months_late))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, Veh_Owned))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, No_of_dep))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, risk_score)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of Risk score by 3 - 6 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, no_of_premiums_paid))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, premium)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of premium by 3 - 6 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue") 
+
+
+```
+1. Channel A seems to record the highest number of repeat offenders, with Channel E having the lowest and Channels C & D ties for second lowest.
+2. Increasing repeat offenses in this bucket indicate a higher repeat in the other two past due buckets in the initial stages i.e. < 5 repeat offenses. This seems counter intuitive.
+3. Instances of Repeat offenses increase as # of premiums paid increases.
+4. 
+
+
+## BIVARIATE ANALYSIS - Past dues 6 - 12 months:
+```{r}
+plot(`Count_6-12_months_late`~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+round(prop.table(table(`Count_6-12_months_late`, sourcing_channel))*100,2)
+
+ggplot(data = Premium_Dataset, aes(y = `Count_6-12_months_late`, fill = Marital_Status)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_6-12_months_late`, fill = Accomodation)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_6-12_months_late`, fill = sourcing_channel)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = `Count_6-12_months_late`, fill = residence_area_type)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, Count_more_than_12_months_late))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, Veh_Owned))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, No_of_dep))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, risk_score)) +
+geom_violin(scale = "area", aes(color = `Count_6-12_months_late`))+
+labs(title = "Spread of Risk score by 6 - 12 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, no_of_premiums_paid))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, premium)) +
+geom_violin(scale = "area", aes(color = `Count_6-12_months_late`))+
+labs(title = "Spread of premium by 6 - 12 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+
+```
+1. Channel A again has the highest instances of repeat offenders with Channel E the lowest.
+2. Pattern noticed in that repeat offences between 10 - 15 in both 3 - 6 months and 6 - 12 months bucket indicates a spike in > 12 months past dues bucket.
+
+
+## BIVARIATE ANALYSIS - Past dues > 12 months:
+```{r}
+plot(Count_more_than_12_months_late~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+round(prop.table(table(Count_more_than_12_months_late, residence_area_type))*100,0)
+table(Count_more_than_12_months_late, residence_area_type)
+
+ggplot(data = Premium_Dataset, aes(y = Count_more_than_12_months_late, fill = Marital_Status)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = Count_more_than_12_months_late, fill = Accomodation)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = Count_more_than_12_months_late, fill = sourcing_channel)) + 
+    geom_bar(position="dodge")+coord_flip()
+
+ggplot(data = Premium_Dataset, aes(y = Count_more_than_12_months_late, fill = residence_area_type)) +     geom_bar(position="dodge")+coord_flip()
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, Veh_Owned))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red")  
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, No_of_dep))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, risk_score)) +
+geom_violin(scale = "area", aes(color = Count_more_than_12_months_late))+
+labs(title = "Spread of Risk score by > 12 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, no_of_premiums_paid))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, premium)) +
+geom_violin(scale = "area", aes(color = Count_more_than_12_months_late))+
+labs(title = "Spread of premium by > 12 months past dues") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+```
+1. Channel A records the highest number of repeat offenders, with Channel E having the lowest.
+2. In this particular bucket, # of dependents seems to record a slight linear trend, with instances of repeat offenses increasing with # of dependents. But this was not seen in the other 2 buckets.
+3. Definite increase in # of premiums paid with higher instances of repeat offenses. This is to be expected as you need to have been paying premiums for longer to have multiple instances of premiums being overdue for > 12 months.
+
+
+## BIVARIATE ANALYSIS - Risk score:
+```{r}
+plot(risk_score~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, risk_score)) +
+geom_violin(scale = "area", aes(color = no_of_premiums_paid))+
+labs(title = "Spread of # of premiums paid by Risk score") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+ggplot(Premium_Dataset, aes(risk_score, premium))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+```
+1. Channel A seems to have a longer set of outliers with lower risk scores, with Channel E having the least.
+2. Risk score seems to decrease as # of premiums paid increases. 
+3. Premiums increase with Risk score.
+
+
+## BIVARIATE ANALYSIS - # of Premiums paid:
+```{r}
+plot(no_of_premiums_paid~Marital_Status+Accomodation+sourcing_channel+residence_area_type, data = Premium_Dataset, col = colors()[100:102])
+
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, premium)) +
+geom_violin(scale = "area", aes(color = no_of_premiums_paid))+
+labs(title = "Spread of # of premiums paid by Premium") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "skyblue")
+
+table(no_of_premiums_paid, Default)
+ggplot(Premium_Dataset, aes(no_of_premiums_paid, premium))+
+geom_jitter(color = "skyblue") +
+geom_smooth(color = "red") 
+
+
+#Default0 = ifelse(Premium_Dataset["Default"]==0,"Yes","No")
+#summ0 = ddply(Premium_Dataset, .(no_of_premiums_paid,Default0), summarize, count_of_cases=length(id)   )
+#summ1 <- ddply(Premium_Dataset, .(no_of_premiums_paid), summarize, total_cases=length(id)   )
+#view(summ0)
+#view(summ1)
+
+#summ3 <- merge(summ0,summ1,by="no_of_premiums_paid")
+#view(summ3)
+#summ3$perc <-round((summ3$count_of_cases/summ3$total_cases)*100,0)
+#summ3$totalperc = round((summ3$total_cases/79853)*100,0)
+#summ3
+
+```
+1. # of premiums paid seem to increase with premium levels.
+
+## BIVARIATE ANALYSIS: Sourcing Channels:
+```{r}
+#creating a table with percentages
+
+stats_3_6_months = as.data.frame.matrix(table(`Count_3-6_months_late`, sourcing_channel))
+stats_3_6_months$total_percentage = (((stats_3_6_months[,1]+stats_3_6_months[,2]+stats_3_6_months[,3]+stats_3_6_months[,4]+stats_3_6_months[,5])/79853)*100) 
+
+stats_3_6_months$A_perc = round(((stats_3_6_months[,1]/43134)*100),2)
+stats_3_6_months$B_perc = round(((stats_3_6_months[,2]/16512)*100),2)
+stats_3_6_months$C_perc = round(((stats_3_6_months[,3]/12039)*100),2)
+stats_3_6_months$D_perc = round(((stats_3_6_months[,4]/7559)*100),2)
+stats_3_6_months$E_perc = round(((stats_3_6_months[,5]/609)*100),2)
+stats_3_6_months
+
+
+stats_6_12_months = as.data.frame.matrix(table(`Count_6-12_months_late`, sourcing_channel))
+stats_6_12_months$A_perc = round(((stats_6_12_months[,1]/43134)*100),2)
+stats_6_12_months$B_perc = round(((stats_6_12_months[,2]/16512)*100),2)
+stats_6_12_months$C_perc = round(((stats_6_12_months[,3]/12039)*100),2)
+stats_6_12_months$D_perc = round(((stats_6_12_months[,4]/7559)*100),2)
+stats_6_12_months$E_perc = round(((stats_6_12_months[,5]/609)*100),2)
+stats_6_12_months
+
+
+stats_greater_12_months = as.data.frame.matrix(table(Count_more_than_12_months_late, sourcing_channel))
+stats_greater_12_months$A_perc = round(((stats_greater_12_months[,1]/43134)*100),2)
+stats_greater_12_months$B_perc = round(((stats_greater_12_months[,2]/16512)*100),2)
+stats_greater_12_months$C_perc = round(((stats_greater_12_months[,3]/12039)*100),2)
+stats_greater_12_months$D_perc = round(((stats_greater_12_months[,4]/7559)*100),2)
+stats_greater_12_months$E_perc = round(((stats_greater_12_months[,5]/609)*100),2)
+stats_greater_12_months
+
+plot(Perc_Cash_Pay~sourcing_channel, data = Premium_Dataset, col = colors()[100:102])
+plot(age_in_years~sourcing_channel, data = Premium_Dataset, col = colors()[100:102])
+plot(Income~sourcing_channel, data = Premium_Dataset, col = colors()[100:102])
+plot(risk_score~sourcing_channel, data = Premium_Dataset, col = colors()[100:102])
+plot(premium~sourcing_channel, data = Premium_Dataset, col = colors()[100:102])
+
+
+
+aggregate(risk_score, by=list(Category=sourcing_channel), FUN=mean)
+aggregate(age_in_years, by=list(Category=sourcing_channel), FUN=mean)
+aggregate(Income, by=list(Category=sourcing_channel), FUN=mean)
+aggregate(premium, by=list(Category=sourcing_channel), FUN=mean)
+aggregate(Perc_Cash_Pay, by=list(Category=sourcing_channel), FUN=mean)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+## BIVARIATE ANALYSIS - Dependent Variable:
+```{r}
+summary(Default)
+
+ggplot(Premium_Dataset, aes(Perc_Cash_Pay, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of % Premium paid in Cash by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset, aes(age_in_years, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of Age by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset, aes(Income, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of Income by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset, aes(`Count_3-6_months_late`, Default)) +
+geom_violin(scale = "area", aes(color = `Count_3-6_months_late`))+
+labs(title = "Spread of 3-6 months Past Dues by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset, aes(`Count_6-12_months_late`, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of 6-12 months Past Dues by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset, aes(Count_more_than_12_months_late, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of >12 months Past Dues by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset,aes(x = Marital_Status, fill =Default )) + geom_bar(position = 'dodge')
+
+ggplot(Premium_Dataset,aes(x = Veh_Owned, fill =Default )) + geom_bar(position = 'dodge')
+
+ggplot(Premium_Dataset,aes(x = No_of_dep, fill =Default )) + geom_bar(position = 'dodge')
+
+ggplot(Premium_Dataset,aes(x = Accomodation, fill =Default )) + geom_bar(position = 'dodge')
+
+ggplot(Premium_Dataset, aes(risk_score, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of Risk Score by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+ggplot(Premium_Dataset,aes(x = no_of_premiums_paid, fill =Default )) + geom_bar(position = 'dodge')
+table(no_of_premiums_paid, Default)
+
+ggplot(Premium_Dataset,aes(x = sourcing_channel, fill =Default )) + geom_bar(position = 'dodge')
+table(sourcing_channel, Default)
+
+stats_default = as.data.frame.matrix(table(Default, sourcing_channel))
+stats_default$A_perc = round(((stats_default[,1]/43134)*100),2)
+stats_default$B_perc = round(((stats_default[,2]/16512)*100),2)
+stats_default$C_perc = round(((stats_default[,3]/12039)*100),2)
+stats_default$D_perc = round(((stats_default[,4]/7559)*100),2)
+stats_default$E_perc = round(((stats_default[,5]/609)*100),2)
+stats_default
+
+aggregate(`Count_3-6_months_late`, by=list(Category=Default), FUN=mean)
+aggregate(`Count_6-12_months_late`, by=list(Category=Default), FUN=mean)
+aggregate(Count_more_than_12_months_late, by=list(Category=Default), FUN=mean)
+aggregate(no_of_premiums_paid, by=list(Category=Default), FUN=mean)
+aggregate(risk_score, by=list(Category=Default), FUN=mean)
+aggregate(Income, by=list(Category=Default), FUN=mean)
+aggregate(age_in_years, by=list(Category=Default), FUN=mean)
+aggregate(Perc_Cash_Pay, by=list(Category=Default), FUN=mean)
+aggregate(premium, by=list(Category=Default), FUN=mean)
+
+ggplot(Premium_Dataset,aes(x = residence_area_type, fill =Default )) + geom_bar(position = 'dodge')
+table(residence_area_type, Default)
+
+ggplot(Premium_Dataset, aes(premium, Default)) +
+geom_violin(scale = "area", aes(color = Default))+
+labs(title = "Spread of premiums by renewal with Mean Values") +
+stat_summary(fun.y = mean, geom = "point", size = 2, color = "black") 
+
+```
+1. Those not renewing their premiums have a far higher proportion of % cash pay.
+2. As expected, those not renewing have higher instances of past dues. this is especially seen in the 3 - 6 month bucket.
+3. 30% of the population that had 2 premiums paid, did not renew their premium. this is the most significant % across the population.
+4. Channels D & E seem to have the highest number of those not renewing their premiums.
+
+# SUMMARY:
+- Overall a large dataset wherein only 6% of the population have not renewed their premiums.
+- The spread of clients is very wide with ages ranging from 21 years to > 90 years. No of premiums paid also vary substantially, seeming to indicate a significant portion of long term clients.
+- In therms of any correlations, Sourcing Channel seems to have the most correlation across the different variables.
+- This could be followed by % cash pay and the different past due buckets.
+

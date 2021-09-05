@@ -1,0 +1,457 @@
+---
+title: "Capstone Model Building"
+author: "Angelo Anthony"
+date: "10/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+setwd("C:/Users/admin/OneDrive/Learning R/Capstone Project/")
+Premium_Dataset_Model = read_excel("Premium DatasetPostEDA.xlsx")
+
+```
+
+```{r}
+#install.packages("mltools")
+library(mltools)
+#install.packages("caret")
+library(caret)
+library(dplyr)
+library(e1071)
+library(class)
+library(ROCR)
+library(logistf)
+library(InformationValue)
+library(ModelMetrics)
+
+
+
+# changing to a data table to enable one hot coding
+
+#Premium_Dataset_Model = data.table::as.data.table(Premium_Dataset_Model)
+
+#Premium_Dataset_OneHot = one_hot(Premium_Dataset_Model, cols = c(Premium_Dataset_Model$Marital_Status+Premium_Dataset_Model$Accomodation+Premium_Dataset_Model$sourcing_channel), dropCols = TRUE)
+
+dmy = dummyVars("~ Marital_Status + Accomodation + sourcing_channel + residence_area_type + Default", data = Premium_Dataset_Model)
+dmy1 = data.frame(predict(dmy, newdata = Premium_Dataset_Model))
+
+Premium_Dataset_OneHot = cbind(Premium_Dataset_Model,dmy1)
+Premium_Dataset_OneHot = Premium_Dataset_OneHot[,-c(7,10,13,14,16,29)]
+
+table(Premium_Dataset_OneHot$Default0)
+
+Premium_Dataset_OneHot$Marital_Status0 = as.factor(Premium_Dataset_OneHot$Marital_Status0)
+Premium_Dataset_OneHot$Marital_Status1 = as.factor(Premium_Dataset_OneHot$Marital_Status1)
+Premium_Dataset_OneHot$Accomodation0 = as.factor(Premium_Dataset_OneHot$Accomodation0)
+Premium_Dataset_OneHot$Accomodation1 = as.factor(Premium_Dataset_OneHot$Accomodation1)
+Premium_Dataset_OneHot$sourcing_channelA = as.factor(Premium_Dataset_OneHot$sourcing_channelA)
+Premium_Dataset_OneHot$sourcing_channelB = as.factor(Premium_Dataset_OneHot$sourcing_channelB)
+Premium_Dataset_OneHot$sourcing_channelC = as.factor(Premium_Dataset_OneHot$sourcing_channelC)
+Premium_Dataset_OneHot$sourcing_channelD = as.factor(Premium_Dataset_OneHot$sourcing_channelD)
+Premium_Dataset_OneHot$sourcing_channelE = as.factor(Premium_Dataset_OneHot$sourcing_channelE)
+Premium_Dataset_OneHot$residence_area_typeRural = as.factor(Premium_Dataset_OneHot$residence_area_typeRural)
+Premium_Dataset_OneHot$residence_area_typeUrban = as.factor(Premium_Dataset_OneHot$residence_area_typeUrban)
+Premium_Dataset_OneHot$Default0 = as.factor(Premium_Dataset_OneHot$Default0)
+names(Premium_Dataset_OneHot)[names(Premium_Dataset_OneHot)=="Count_3-6_months_late"] = "Count_3_6_months_late"
+names(Premium_Dataset_OneHot)[names(Premium_Dataset_OneHot)=="Count_6-12_months_late"] = "Count_6_12_months_late"
+#Premium_Dataset_OneHot$Default1 = as.factor(Premium_Dataset_OneHot$Default1)
+
+```
+```{r}
+# scaling
+
+Premium_Dataset_Scaled = Premium_Dataset_OneHot %>% mutate_if(is.numeric, scale)
+
+```
+
+```{r}
+#creating Test and Training Set
+#install.packages("caTools")
+library(caTools)
+
+set.seed(1000)
+sample = sample.split(Premium_Dataset_Scaled$Default0, SplitRatio = 0.75)
+Train = subset(Premium_Dataset_Scaled, sample == TRUE)
+Test = subset(Premium_Dataset_Scaled, sample == FALSE)
+
+table(Premium_Dataset_Scaled$Default0)
+table(Train$Default0)
+table(Test$Default0)
+
+```
+
+
+
+
+
+
+```{r}
+# using SMOTE on TRain data
+#install.packages("DMwR")
+library(DMwR)
+
+Premium_Dataset_balanced = SMOTE(Default0 ~., Train, perc.over = 200, perc.under = 700, k = 5)
+
+table(Premium_Dataset_balanced$Default0)
+str(Premium_Dataset_balanced$Default0)
+
+levels(Premium_Dataset_balanced$Default0) = c("NO", "YES")
+levels(Test$Default0) = c("NO", "YES")
+
+```
+
+
+# Setting up the general parameters for training multiple models
+```{r}
+# Define the training control
+fitControl <- trainControl(
+              method = 'repeatedcv',           # k-fold cross validation
+              number = 3,                     # number of folds or k
+              repeats = 1,                     # repeated k-fold cross-validation
+              allowParallel = TRUE,
+              classProbs = TRUE,
+              summaryFunction=twoClassSummary# should class probabilities be returned
+    ) 
+```
+
+
+# Model _1 : GLM : Simple Logistic Regression Model
+```{r}
+lr_model <- train(Default0 ~ + Perc_Cash_Pay+ Income + age_in_years +Count_3_6_months_late+  Count_6_12_months_late+ Count_more_than_12_months_late + risk_score + no_of_premiums_paid +no_of_premiums_paid + sourcing_channelA + sourcing_channelC + sourcing_channelD + residence_area_typeRural + residence_area_typeUrban , data = Premium_Dataset_balanced,
+                 method = "glm",
+                 family = "binomial",
+                 trControl = fitControl)
+
+summary(lr_model)
+
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+lr_predictions_test = predict(lr_model, newdata = Test, type = "raw")
+caret::confusionMatrix(Test$Default0, lr_predictions_test)
+
+# se"N"sitivity : True "P"ositive rate
+# s"P"ecificity : True "N"egative rateinstall.pack(rms)
+#install.packages("rms")
+#library(rms)
+
+#glm(Default1~., data = Premium_Dataset_balanced, family = "binomial")
+#summary(glm(Default0~., data = Premium_Dataset_balanced, family = "binomial"))
+#vif(glm(Default0~., data = Premium_Dataset_balanced, family = "binomial"))
+#plot(Premium_Dataset_balanced$Marital_Status0, Premium_Dataset_balanced$Marital_Status1)
+
+
+
+```
+
+```{r}
+glmModel = glm(Default0~., data = Premium_Dataset_balanced, family = binomial)
+summary(glmModel)
+
+library(MASS)
+library(ROCR)
+log_model = stepAIC(glmModel, direction = "both", k = 5)
+
+summary(log_model)
+
+varImp(log_model)
+l = data.frame(varImp(log_model))
+l = cbind(newColName = rownames(l),l)
+rownames(l) = 1:nrow(l)
+l[with(l,order(-Overall)), ]
+
+
+predTrain = predict(log_model, newdata = Premium_Dataset_balanced, type = "response")
+tb = table(Premium_Dataset_balanced$Default0, predTrain>0.3)
+print('accuracy is ')
+sum(diag(tb))/sum(tb)
+
+p0 = prediction(predTrain, Premium_Dataset_balanced$Default0)
+p1 = performance(p0, "tpr", "fpr")
+plot(p1, main = "ROC Curve", colorize = TRUE)
+AUC  <- as.numeric(performance(p0, "auc")@y.values) 
+
+print('AUC')
+AUC
+
+predTest = predict(log_model, newdata = Test, type= "response")
+
+class_pred_with_cutoff = ifelse(predTest>=0.4, "YES", "NO")
+
+lr_confusion_matrix = table(Test$Default0, class_pred_with_cutoff)
+lr_confusion_matrix
+
+lr_accuracy = sum(diag(lr_confusion_matrix)) / sum(lr_confusion_matrix)
+lr_accuracy
+
+lr_sensitivity = lr_confusion_matrix[2,2] / sum(lr_confusion_matrix[2, ])
+lr_sensitivity
+
+lr_specificity = lr_confusion_matrix[1,1] / sum(lr_confusion_matrix[1, ])
+lr_specificity
+
+LRmodel_names = c("Accuracy", "Sensitivity", "Specificity")
+LRmodel_Test_Outcome = c(lr_accuracy, lr_sensitivity, lr_specificity)
+cbind(LRmodel_names, LRmodel_Test_Outcome)
+
+```
+
+# Model_2 : Naive-Bayes
+```{r}
+nb_model <- train(Default0 ~ ., data = Premium_Dataset_balanced,
+                 method = "naive_bayes",
+                 trControl = fitControl)
+
+summary(nb_model)
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+nb_predictions_test <- predict(nb_model, newdata = Test, type = "raw")
+confusionMatrix(nb_predictions_test, Test$Default0)
+```
+```{r}
+
+nbModel = naiveBayes(Default0~., data = Premium_Dataset_balanced)
+nbModel
+
+ypred = predict(nbModel, newdata = Test, type="raw")
+plot(Test$Default0,ypred[,2])
+
+nbModel_predict_test = predict(nbModel, newdata = Test)
+confusionMatrix(Test$Default0, nbModel_predict_test)
+
+p_test<-prediction(ypred[,2], Test$Default0)
+perf<-performance(p_test,"tpr", "fpr")
+plot(perf,colorize = TRUE)
+nb_AUC  <- as.numeric(performance(p_test, "auc")@y.values) 
+nb_AUC
+
+nb_class_prediction_with_cutoff = ifelse(ypred[, 2] >= 0.2, "YES", "NO")
+nb_confusion_matrix = table(Test$Default0, nb_class_prediction_with_cutoff)
+nb_confusion_matrix
+
+nb_accuracy = sum(diag(nb_confusion_matrix)) / sum(nb_confusion_matrix)
+nb_accuracy
+
+nb_sensitivity = nb_confusion_matrix[2,2] / sum(nb_confusion_matrix['YES', ])
+nb_sensitivity
+
+nb_specificity = nb_confusion_matrix[1,1] / sum(nb_confusion_matrix['NO', ])
+nb_specificity
+```
+
+# Model_3 : KNN 
+```{r}
+knn_model <- train(Default0 ~ ., data = Premium_Dataset_balanced,
+                   preProcess = c("center", "scale"),
+                   method = "knn",
+                   tuneLength = 3,
+                   trControl = fitControl)
+knn_model
+
+
+
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+knn_predictions_test <- predict(knn_model, newdata = Test, type = "raw")
+knn_predictions_test
+
+
+caret::confusionMatrix(knn_predictions_test, Test$Default0)
+twoClassSummary(knn_predictions_test, lev = levels(knn_predictions_test))
+```
+```{r}
+
+```
+
+# Model_5 : Random Forest 
+```{r}
+#install.packages("randomForest")
+#install.packages("rminer")
+#library(randomForest)
+#library(rminer)
+#library(rpart.plot)
+
+rf_model <- train(Default0 ~ ., data = Premium_Dataset_balanced,
+                     method = "rf",
+                     ntree = 31,
+                     maxdepth = 5,
+                     tuneLength = 10,
+                     importance = TRUE,    
+                     trControl = fitControl)
+
+#importance(rf_model, data = Premium_Dataset_balanced, method = "randomForest")
+
+rf_model
+
+rndForest = randomForest(formula = Default0~., data = Premium_Dataset_balanced, ntree = 31, mtry = 3, nodesize = 10, importance = TRUE)
+rndForest
+plot(rndForest)
+importance(rndForest)
+trndForest = tuneRF(x = Premium_Dataset_balanced[,-23], y = Premium_Dataset_balanced$Default0, mtryStart = 3, stepFactor = 1.5, ntreeTry = 31, improve = 0.0001, nodesize = 10, trace = TRUE, plot = TRUE, doBest = TRUE, importance = TRUE)
+
+trndForest
+frTest = Test
+
+rfTrain = Premium_Dataset_balanced
+rfTrain$predict.class = predict(trndForest, rfTrain, type = "class")
+rfTrain$prob1 = predict(trndForest, rfTrain, type = "prob")[,"YES"]
+table(rfTrain$Default0, rfTrain$predict.class)
+qs = quantile(rfTrain$prob1, prob = seq(0,1, length = 11))
+print(qs) 
+
+frTest$predict.class = predict(trndForest, frTest, type = "class")
+frTest$prob1 = predict(trndForest, frTest, type = "prob")[,"YES"]
+
+table(frTest$Default0, frTest$predict.class)
+table(frTest$predict.class, frTest$Default0)
+  
+threshold = qs[8]
+mean(frTest$Default0[frTest$prob1>threshold]=="YES")
+
+rf_confusion_matrix = table(Test$Default0, frTest$predict.class)
+rf_confusion_matrix
+
+rf_accuracy = sum(diag(rf_confusion_matrix)) / sum(rf_confusion_matrix)
+rf_accuracy
+
+rf_sensitivity = rf_confusion_matrix[2,2] / sum(rf_confusion_matrix['YES', ])
+rf_sensitivity
+
+rf_specificity = rf_confusion_matrix[1,1] / sum(rf_confusion_matrix['NO', ])
+rf_specificity
+
+twoClassSummary(frTest, lev = levels(frTest$prob1))
+
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+rf_predictions_test <- predict(rf_model, newdata = Test, type = "raw")
+#rf_predictions_test
+#table(rf_predictions_test, Test$Default0)
+confusionMatrix(rf_predictions_test, Test$Default0)
+```
+# Model_6 : Gradient Boosting Machines 
+```{r}
+gbm_model <- train(Default0 ~ ., data = Premium_Dataset_balanced,
+                     method = "gbm",
+                     trControl = fitControl,
+                     verbose = FALSE)
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+gbm_predictions_test <- predict(gbm_model, newdata = Test, type = "raw")
+confusionMatrix(gbm_predictions_test, Test$Default0)
+```
+# Model_7 : Xtreme Gradient boosting Machines 
+```{r}
+cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1,number = 3, 
+                        summaryFunction = twoClassSummary,
+                        classProbs = TRUE,
+                        allowParallel=T)
+
+    xgb.grid <- expand.grid(nrounds = 100,
+                            eta = c(0.01),
+                            max_depth = c(2,4),
+                            gamma = 0,               #default=0
+                            colsample_bytree = 1,    #default=1
+                            min_child_weight = 1,    #default=1
+                            subsample = 1            #default=1
+    )
+
+    xgb_model <-train(Default0~.,
+                     data=Premium_Dataset_balanced,
+                     method="xgbTree",
+                     trControl=cv.ctrl,
+                     tuneGrid=xgb.grid,
+                     verbose=T,
+                     nthread = 2
+    )
+```
+
+# Predict using the trained model & check performance on test set
+```{r}
+xgb_predictions_test <- predict(xgb_model, newdata = Test, type = "raw")
+confusionMatrix(xgb_predictions_test, Test$Default0)
+```
+
+---------------------------  COMPARING MODELS  ---------------------
+```{r}
+# Compare model performances using resample()
+models_to_compare <- resamples(list(Logistic_Regression = lr_model, 
+                                 Navie_Bayes = nb_model, 
+                                 KNN = knn_model, 
+                                 Random_Forest = rf_model,
+                                 Gradient_boosting = gbm_model,
+                                 eXtreme_gradient_boosting = xgb_model
+                                  ))
+
+# Summary of the models performances
+summary(models_to_compare)
+```
+
+# Draw box plots to compare models
+```{r}
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+bwplot(models_to_compare, scales=scales)
+
+```
+# Model_5 : Extreme Random Forest 
+```{r}
+install.packages("extraTrees")
+library(extraTrees)
+help("extraTrees")
+
+Erf_model = extraTrees(Premium_Dataset_balanced, Premium_Dataset_balanced$Default0, ntree = 31, mtry = 4, nodesize = 5)
+
+#Erf_model <- train(Default0 ~ ., data = Premium_Dataset_balanced,
+                     method = "extraTrees",
+                     ntree = 30,
+                     maxdepth = 5,
+                     tuneLength = 10,
+                     trControl = fitControl)
+```
+
+```{r}
+lr_model$finalModel
+lr_model$results
+nb_model$finalModel
+nb_model$results
+nb_model$bestTune
+knn_model$finalModel
+knn_model$results
+knn_model$bestTune
+rf_model$finalModel
+rf_model$results
+rf_model$bestTune
+
+
+
+```
+
+
+
+
+
+# Predict using the trained model & check performance on test set
+```{r}
+rf_predictions_test <- predict(rf_model, newdata = Test, type = "raw")
+confusionMatrix(rf_predictions_test, Test$Default0)
+```
+
+
+
+
+
+
